@@ -15,6 +15,7 @@ from utils import CvFpsCalc
 from model import KeyPointClassifier
 from model import PointHistoryClassifier
 
+from Targets import Target
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -36,6 +37,9 @@ def get_args():
     args = parser.parse_args()
 
     return args
+
+def menu(image):
+    print("menu")
 
 
 def main():
@@ -117,9 +121,9 @@ def main():
         # Detection implementation #############################################################
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
 
-        image.flags.writeable = False
+        # image.flags.writeable = False
         results = hands.process(image)
-        image.flags.writeable = True
+        # image.flags.writeable = True
 
         #  ####################################################################
         if results.multi_hand_landmarks is not None:
@@ -141,13 +145,80 @@ def main():
 
                 # Hand sign classification
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                # we will check for menu first
+                if hand_sign_id == 4: # this works
+                    while hand_sign_id != 1:
+                        fps = cvFpsCalc.get()
+
+                        # Process Key (ESC: end) #################################################
+                        key = cv.waitKey(10)
+                        if key == 27:  # ESC
+                            break
+                        number, mode = select_mode(key, mode)
+
+                        # Camera capture #####################################################
+                        ret, image = cap.read()
+                        if not ret:
+                            break
+                        image = cv.flip(image, 1)  # Mirror display
+                        debug_image = copy.deepcopy(image)
+
+                        # Detection implementation #############################################################
+                        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+
+                        # image.flags.writeable = False
+                        results = hands.process(image)
+                        # image.flags.writeable = True
+                        if results.multi_hand_landmarks is not None:
+                            for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
+                                                                  results.multi_handedness):
+                                print("menu open")
+                                # Bounding box calculation
+                                brect = calc_bounding_rect(debug_image, hand_landmarks)
+                                # Landmark calculation
+                                landmark_list = calc_landmark_list(debug_image, hand_landmarks)
+
+                                # Conversion to relative coordinates / normalized coordinates
+                                pre_processed_landmark_list = pre_process_landmark(
+                                    landmark_list)
+                                pre_processed_point_history_list = pre_process_point_history(
+                                    debug_image, point_history)
+                                # Write to the dataset file
+                                logging_csv(number, mode, pre_processed_landmark_list,
+                                            pre_processed_point_history_list)
+
+                                # Hand sign classification
+                                hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                                # Drawing part
+                                debug_image = draw_bounding_rect(use_brect, debug_image, brect)
+                                debug_image = draw_landmarks(debug_image, landmark_list)
+                                debug_image = draw_info_text(
+                                    debug_image,
+                                    brect,
+                                    handedness,
+                                    keypoint_classifier_labels[hand_sign_id],
+                                    point_history_classifier_labels[most_common_fg_id[0][0]],
+                                )
+                                # else:
+                                #     point_history.append([0, 0])
+                                #
+                                # debug_image = draw_point_history(debug_image, point_history)
+                            debug_image = draw_info(debug_image, fps, mode, number)
+
+                            # Screen reflection #############################################################
+                            cv.imshow('Hand Gesture Recognition', debug_image)
+
+
+
+
+
+
+
+                #check for point gesture
                 if hand_sign_id == 2:  # Point gesture
                     point_history.append(landmark_list[8])
                 else:
                     point_history.append([0, 0])
-
-                # if hand_sign_id == 1: # this works
-                #     print("this is closed fist")
 
                 # Finger gesture classification
                 finger_gesture_id = 0
@@ -171,10 +242,10 @@ def main():
                     keypoint_classifier_labels[hand_sign_id],
                     point_history_classifier_labels[most_common_fg_id[0][0]],
                 )
-        else:
-            point_history.append([0, 0])
-
-        debug_image = draw_point_history(debug_image, point_history)
+        # else:
+        #     point_history.append([0, 0])
+        #
+        # debug_image = draw_point_history(debug_image, point_history)
         debug_image = draw_info(debug_image, fps, mode, number)
 
         # Screen reflection #############################################################
